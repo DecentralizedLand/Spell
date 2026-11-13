@@ -8,17 +8,6 @@ copying the backing pages into a kernel ring buffer that user space drains over
 a misc device. The target process is never stopped, never ptraced, and no
 monitored user-space interface is involved.
 
-## Explicitly out of scope
-
-This tool does **not** contain, and will not gain:
-
-* symbol hiding / self-unlinking / DKOM (module would appear in `lsmod`)
-* any evasion of EDR, anti-cheat, or anti-tamper products
-* covert network egress, raw `sk_buff` crafting, or Netfilter bypass
-
-Those are rootkit/C2 features. They are a different product with a different
-threat model, and no amount of "research framing" changes what they do.
-
 ## What it actually avoids (and why that is a design property, not stealth)
 
 | Interface | Used? | Why |
