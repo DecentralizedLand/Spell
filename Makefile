@@ -2,12 +2,13 @@
 # Top-level build driver.
 #
 #   make            build module + CLI
-#   make module     kernel side only
-#   make user       CLI only
+#   make module     kernel side only (C)
+#   make user       CLI only (Rust, freestanding x86_64-unknown-none)
 #   make clean
 #
 # KDIR may be overridden:
 #   make KDIR=/path/to/kernel/headers
+# The kernel side stays C; user space is Rust. See docs/DESIGN.md.
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 PWD  := $(shell pwd)

@@ -28,7 +28,7 @@ target's own address space or task state to observe.
 
 ```
 kernel/   Linux kernel module (external build, out-of-tree)
-user/     glibc-free CLI, direct syscalls, ELF core writer
+user/     Rust CLI (no_std), direct syscalls, ELF core writer
 tools/    test target + validation helpers
 docs/     design notes
 ```
@@ -41,9 +41,10 @@ Kernel side needs headers for the *running* kernel:
 make -C /lib/modules/$(uname -r)/build M=$PWD/nimbledump/kernel modules
 ```
 
-User side is freestanding (no libc):
+User side is freestanding Rust (`x86_64-unknown-none`, no std/libc):
 
 ```
+rustup target add x86_64-unknown-none
 make -C nimbledump/user
 ```
 

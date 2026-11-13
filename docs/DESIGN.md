@@ -28,11 +28,13 @@ protections are irrelevant to it, not why they are "bypassed".
 
 ```
 +--------------------------------------------------------------+
-| user/ndump                                                    |
-|   main.c        CLI parse, orchestration, output              |
-|   ndump_dev.c   open /dev/ndump, ioctl, framed read()         |
-|   ndump_elf.c   PT_LOAD + PT_NOTE core writer                 |
-|   ndump_scan.c  pattern/heap scan over the produced buffer    |
+| user/ndump  (Rust, no_std, x86_64-unknown-none)               |
+|   main.rs       CLI parse, orchestration, output              |
+|   dev.rs        open /dev/ndump, ioctl, framed read()         |
+|   elf.rs        PT_LOAD + PT_NOTE core writer                 |
+|   scan.rs       pattern/heap scan over the produced buffer    |
+|   sys.rs        freestanding syscall layer (r10/r8/r9 asm)    |
+|   abi.rs        repr(C) mirror of ndump_uapi.h + ioctl nums   |
 +----------------------------|---------------------------------+
                              | misc device, ioctl + read
 +----------------------------v---------------------------------+
@@ -184,27 +186,34 @@ All addresses are `__u64` and validated against `TASK_SIZE_MAX` before use.
 The module keeps one target per file descriptor (not per module), so multiple
 concurrent dumps are possible and cleanup is tied to `release()`.
 
-## 8. User-space: direct syscalls, no libc
+## 8. User-space: direct syscalls, no libc (Rust)
 
-The CLI is built `-ffreestanding -nostdlib -static`. All syscalls go through
-inline `syscall` instructions rather than glibc wrappers:
+The CLI targets `x86_64-unknown-none`: `#![no_std]`, no allocator, no loader —
+the target triple has no std/libc by construction, so the glibc-free property
+is enforced by the toolchain rather than by build flags. All syscalls go
+through inline `syscall` instructions (`core::arch::asm!`) rather than any
+wrapping layer:
 
-```c
-static inline long nd_syscall6(long n, long a, long b, long c,
-                               long d, long e, long f)
-{
-        register long r10 __asm__("r10") = d;
-        register long r8  __asm__("r8")  = e;
-        register long r9  __asm__("r9")  = f;
-        long ret;
-        __asm__ volatile ("syscall"
-                          : "=a"(ret)
-                          : "a"(n), "D"(a), "S"(b), "d"(c),
-                            "r"(r10), "r"(r8), "r"(r9)
-                          : "rcx", "r11", "memory");
-        return ret;
+```rust
+pub unsafe fn raw(n: u64, a: u64, b: u64, c: u64,
+                  d: u64, e: u64, f: u64) -> i64 {
+    let ret: i64;
+    core::arch::asm!(
+        "syscall",
+        inlateout("rax") n as i64 => ret,
+        in("rdi") a, in("rsi") b, in("rdx") c,
+        in("r10") d, in("r8") e, in("r9") f,
+        lateout("rcx") _, lateout("r11") _,
+        options(nostack)
+    );
+    ret
 }
 ```
+
+The register choices are mandatory: 4th/5th/6th args go in `r10`/`r8`/`r9`
+per the x86_64 SysV *kernel* convention (not the userspace one), and `rcx`/
+`r11` are clobbered by `syscall` itself (return RIP and RFLAGS) — omitting
+either silently corrupts the caller.
 
 Consequences worth stating plainly: an LD_PRELOAD shim cannot intercept these
 calls, and the binary has no dynamic symbol table for a user-space hook to
@@ -212,13 +221,15 @@ patch. That is a *dependency* property (no libc, no loader), useful for running
 from a minimal initramfs — it is not a detection-evasion feature.
 
 `SYS_ioctl`, `SYS_read`, `SYS_openat`, `SYS_mmap`, `SYS_munmap`, `SYS_write`,
-`SYS_exit_group` are the only numbers needed; they are taken from
-`<asm/unistd_64.h>` at build time, not hardcoded, so a kernel ABI change breaks
-the build loudly instead of silently calling the wrong syscall.
+`SYS_exit_group` are the only numbers needed. The `abi.rs` ioctl numbers are
+computed with `const fn` from struct sizes (mirroring `_IOWR`/`_IOR`/`_IOW`),
+and `NdumpRec` carries a compile-time `assert!(size_of::<NdumpRec>() == 16)`
+so an ABI drift in either direction fails the build instead of desyncing the
+record parser.
 
 ## 9. ELF core output
 
-`ndump_elf.c` emits a standard `ET_CORE`:
+`elf.rs` emits a standard `ET_CORE`:
 
 * `PT_NOTE` with `NT_PRSTATUS` (pid, signal 0, no registers) and `NT_PRPSINFO`
   (comm, args from the VMA that spans the stack), so GDB can `attach` the file

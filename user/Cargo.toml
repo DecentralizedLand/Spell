@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Freestanding user-space CLI: no libc, no dynamic loader, no PLT/GOT.
+#
+#   cargo build --release --target x86_64-unknown-none
+#
+# The x86_64-unknown-none target has no std and no libc by construction,
+# so the glibc-free property is enforced by the target, not by discipline.
+# Add it once:  rustup target add x86_64-unknown-none
+
+[package]
+name = "ndump"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0"
+
+[[bin]]
+name = "ndump"
+path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+overflow-checks = false
