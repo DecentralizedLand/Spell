@@ -1,4 +1,6 @@
-# nimbledump
+# SPELL
+
+**S**pooky **P**rocess **E**xtraction, **L**ayer by **L**ayer
 
 Out-of-band process memory extractor for Linux x86_64.
 
